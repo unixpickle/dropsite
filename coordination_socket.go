@@ -11,11 +11,8 @@ import (
 type PacketType int
 
 const (
-	// Handshake packets are used when initiating a proxy-proxy connection.
-	HandshakePacket PacketType = iota
-
 	// Data packets are used to notify a proxy that data is waiting at a drop site.
-	DataPacket
+	DataPacket = iota
 
 	// Ack (short for "acknowledge") packets are sent to acknowledge that data has been
 	// successfully retrieved from a drop site or that an error occurred.
@@ -39,7 +36,7 @@ const (
 	EOFPacket
 )
 
-const PacketTypeCount = 7
+const PacketTypeCount = 6
 
 type Packet struct {
 	Type   PacketType             `json:"type"`
@@ -52,6 +49,7 @@ type Packet struct {
 type CoordinationSocket struct {
 	incoming [PacketTypeCount]chan Packet
 	outgoing chan outgoingPacket
+	conn     net.Conn
 
 	closeLock sync.RWMutex
 	closed    bool
@@ -64,18 +62,21 @@ type CoordinationSocket struct {
 func NewCoordinationSocket(c net.Conn) *CoordinationSocket {
 	var res CoordinationSocket
 
+	res.conn = c
+
 	for i := 0; i < PacketTypeCount; i++ {
 		res.incoming[i] = make(chan Packet, 1)
 	}
-	go res.incomingLoop(c)
+	go res.incomingLoop()
 
 	res.outgoing = make(chan outgoingPacket)
-	go res.outgoingLoop(c)
+	go res.outgoingLoop()
 
 	return &res
 }
 
 // Close closes the socket.
+// It will cancel any blocking Send() or Receive() calls asynchronously.
 //
 // After a socket is closed, all successive Send() calls will fail.
 // However, it is not guaranteed that successive Receive() calls will fail.
@@ -88,8 +89,9 @@ func (c *CoordinationSocket) Close() error {
 	if c.closed {
 		return errors.New("already closed")
 	}
-	close(c.outgoing)
 	c.closed = true
+	close(c.outgoing)
+	c.conn.Close()
 	return nil
 }
 
@@ -127,15 +129,15 @@ func (c *CoordinationSocket) Send(p Packet) error {
 // It will close the socket if it blocks while writing packets to incoming channels, since this
 // indicates an invalid packet from the remote end.
 // When it returns, it closes all input streams and the overall CoordinationSocket.
-func (c *CoordinationSocket) incomingLoop(conn net.Conn) {
+func (c *CoordinationSocket) incomingLoop() {
 	defer func() {
-		conn.Close()
+		c.conn.Close()
 		for i := 0; i < PacketTypeCount; i++ {
 			close(c.incoming[i])
 		}
 	}()
 
-	decoder := json.NewDecoder(conn)
+	decoder := json.NewDecoder(c.conn)
 	for {
 		var packet Packet
 		if err := decoder.Decode(&packet); err != nil {
@@ -158,11 +160,8 @@ func (c *CoordinationSocket) incomingLoop(conn net.Conn) {
 
 // outgoingLoop encodes packets and sends them to the connection.
 // It will return when c.outgoing is closed.
-// When it returns, it closes the socket.
-func (c *CoordinationSocket) outgoingLoop(conn net.Conn) {
-	defer c.Close()
-
-	encoder := json.NewEncoder(conn)
+func (c *CoordinationSocket) outgoingLoop() {
+	encoder := json.NewEncoder(c.conn)
 	for packet := range c.outgoing {
 		if err := encoder.Encode(packet.p); err != nil {
 			packet.c <- err
