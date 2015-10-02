@@ -44,23 +44,75 @@ func (s ProxyServer) clientToServerLoop() {
 	defer s.ServerConn.Close()
 
 	for {
-		// TODO: read a data packet here, etc.
+		dataPacket, err := s.CoordinationSocket.Receive(DataPacket)
+		if err != nil {
+			return
+		}
+		_, ok := dataPacket.Fields["drop_site"]
+		if !ok {
+			return
+		}
+		// TODO: the rest here.
+
 	}
 }
 
 // serverToClientLoop listens for data from the server and forwards it to the client proxy.
 //
 // Before this returns, it closes the server socket, s.ServerReader, and the coordination socket.
-// This will surely return if both the coordination socket and the server socket are closed.
 func (s ProxyServer) serverToClientLoop() {
 	defer close(s.ServerReader.Close)
 	defer s.CoordinationSocket.Close()
 	defer s.ServerConn.Close()
 
-	for _ = range s.ServerReader.Chunks {
-		if err := s.CoordinationSocket.Send(Packet{AllocDropSitePacket, nil}); err != nil {
-			return
+	for chunk := range s.ServerReader.Chunks {
+		hash := hashChunk(chunk)
+		for {
+			dsIndex, ok := s.allocDropSite()
+			if !ok {
+				return
+			}
+			dropSite := s.DropSites[dsIndex]
+
+			if err := dropSite.Upload(chunk); err != nil {
+				errPacket := Packet{UploadErrorPacket, map[string]interface{}{"error": err.Error()}}
+				if s.CoordinationSocket.Send(errPacket) != nil {
+					return
+				}
+				continue
+			}
+
+			dataPacket := Packet{DataPacket, map[string]interface{}{"drop_site": dsIndex,
+				"hash": hash}}
+			if s.CoordinationSocket.Send(dataPacket) != nil {
+				return
+			}
+
+			ack, err := s.CoordinationSocket.Receive(AckPacket)
+			if err != nil {
+				return
+			} else if succ, ok := ack.Fields["success"].(bool); succ {
+				break
+			} else if !ok {
+				return
+			}
 		}
-		// TODO: use the drop site we allocated, upload data, etc.
 	}
+}
+
+func (s ProxyServer) allocDropSite() (int, bool) {
+	if s.CoordinationSocket.Send(Packet{AllocDropSitePacket, nil}) != nil {
+		return 0, false
+	}
+	response, err := s.CoordinationSocket.Receive(UseDropSitePacket)
+	if err != nil {
+		return 0, false
+	}
+	dsIndex, ok := response.Fields["drop_site"].(int)
+	if !ok {
+		return 0, false
+	} else if dsIndex < 0 || dsIndex >= len(s.DropSites) {
+		return 0, false
+	}
+	return dsIndex, true
 }
