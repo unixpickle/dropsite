@@ -1,6 +1,7 @@
 package dropsite
 
 import (
+	"errors"
 	"net"
 	"sync"
 
@@ -54,12 +55,31 @@ func (s ProxyServer) clientToServerLoop() {
 		if err != nil {
 			return
 		}
-		_, ok := dataPacket.Fields["drop_site"]
-		if !ok {
+
+		dsIndex, ok1 := dataPacket.Fields["drop_site"].(int)
+		hash, ok2 := dataPacket.Fields["hash"].(string)
+		if !ok1 || !ok2 {
 			return
 		}
-		// TODO: the rest here.
 
+		data, err := s.DropSites[dsIndex].Download()
+		if err == nil {
+			if hashChunk(data) != hash {
+				err = errors.New("hashes do not match")
+			}
+		}
+		if err != nil {
+			errPacket := Packet{AckPacket, map[string]interface{}{"error": err.Error(),
+				"success": false}}
+			if s.CoordinationSocket.Send(errPacket) != nil {
+				return
+			}
+		} else {
+			ack := Packet{AckPacket, map[string]interface{}{"success": true}}
+			if s.CoordinationSocket.Send(ack) != nil {
+				return
+			}
+		}
 	}
 }
 
