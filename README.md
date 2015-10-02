@@ -10,7 +10,7 @@ Data is transferred from the *client* to the *server* in three steps, and data i
 
 The important thing to notice is that the *client* and the *server* both believe they are communicating directly over TCP. This makes it possible to tunnel all sorts of applications over a *virtual connection*.
 
-There is one fine detail which is worth noting. While all data sent over the *virtual connection* is transmitted through drop sites, the *proxy client* and the *proxy server* still communicate some information over a TCP called the **coordination socket**. The *coordination socket* is used to determine which drop sites to use and when to use them. The *proxy client* and the *proxy server* also use the *coordination socket* to send acknowledgements when data is received and to convey errors when they occur.
+There is one fine detail which is worth noting. While all data sent over the *virtual connection* is transmitted through drop sites, the *proxy client* and the *proxy server* still communicate some information over a TCP socket called the **coordination socket**. The *coordination socket* is used to determine which drop sites to use and when to use them. The *proxy client* and the *proxy server* also use the *coordination socket* to send acknowledgements when data is received and to convey errors when they occur.
 
 # TODO
 
