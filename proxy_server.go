@@ -17,6 +17,8 @@ type ProxyServer struct {
 
 // Run starts the proxy functionality having already established a server connection, a list
 // of drop sites, and a coordination socket to the proxy client.
+//
+// After this returns, the coordination socket, server socket, and server reader will all be closed.
 func (s ProxyServer) Run() {
 	var wg sync.WaitGroup
 
@@ -38,7 +40,11 @@ func (s ProxyServer) Run() {
 // clientToServerLoop listens for data from the client proxy and forwards it to the server.
 //
 // Before this returns, it closes the server socket and the coordination socket.
-// This will surely return if both the coordination socket and the server socket are closed.
+// This will immediately return if both the coordination socket and the server socket are closed.
+// If the coordination socket is closed, this will return once all incoming data has been written to
+// the server.
+// If the server socket is closed, this will return if the client tries to write more data to the
+// server.
 func (s ProxyServer) clientToServerLoop() {
 	defer s.CoordinationSocket.Close()
 	defer s.ServerConn.Close()
@@ -60,6 +66,11 @@ func (s ProxyServer) clientToServerLoop() {
 // serverToClientLoop listens for data from the server and forwards it to the client proxy.
 //
 // Before this returns, it closes the server socket, s.ServerReader, and the coordination socket.
+// This will return immediately if both the server socket and the coordination socket are closed.
+// If the coordination socket is closed, this will return if the server tries to send data to the
+// client.
+// If the server socket is closed, this will return once all buffered data has been read from it and
+// sent to the client.
 func (s ProxyServer) serverToClientLoop() {
 	defer close(s.ServerReader.Close)
 	defer s.CoordinationSocket.Close()

@@ -30,13 +30,9 @@ const (
 	// UploadError packets are sent by the proxy server to indicate that it could not upload data
 	// to a given drop site.
 	UploadErrorPacket
-
-	// EOF packets are sent from the proxy server to the proxy client when the remote end closes the
-	// connection. When a proxy client receives an EOF, it should close the coordination socket.
-	EOFPacket
 )
 
-const PacketTypeCount = 6
+const PacketTypeCount = 5
 
 type Packet struct {
 	Type   PacketType             `json:"type"`
