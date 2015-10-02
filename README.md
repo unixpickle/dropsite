@@ -1,6 +1,6 @@
 # Abstract
 
-For spies, a "drop site" is a place where a package can be left for another spy to pick up. In a similar sense, a digital drop site is a location on the web where a piece of information can be left, only to be retrieved by another client later on. The **dropsite** package provides a mechanism through which network connections can be proxied through online drop sites.
+For spies, a "drop site" is a place where a package can be left for another spy to pick up. In a similar sense, a digital drop site is a location on the web where a piece of information can be left, only to be retrieved later on. The **dropsite** package provides a mechanism through which network connections can be proxied through online drop sites.
 
 # Overview & Terminology
 
