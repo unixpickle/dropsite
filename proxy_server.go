@@ -13,7 +13,7 @@ type ProxyServer struct {
 	ServerConn         net.Conn
 	ServerReader       latencystream.ChunkStream
 	DropSites          []DropSite
-	CoordinationSocket CoordinationSocket
+	CoordinationSocket *CoordinationSocket
 }
 
 // Run starts the proxy functionality having already established a server connection, a list

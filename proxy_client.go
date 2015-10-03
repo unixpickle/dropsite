@@ -14,7 +14,7 @@ type ProxyClient struct {
 	ClientConn         net.Conn
 	ClientReader       latencystream.ChunkStream
 	DropSites          []DropSite
-	CoordinationSocket CoordinationSocket
+	CoordinationSocket *CoordinationSocket
 	MaxErrorTimeout    time.Duration
 }
 
