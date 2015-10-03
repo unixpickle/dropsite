@@ -47,24 +47,23 @@ func (a *allocator) Alloc() int {
 	defer a.lock.Unlock()
 
 	var min int64
-	foundId := -1
+	var dropSite *dropSiteUsage
 	for _, ds := range a.dropSites {
 		if ds.inUse {
 			continue
 		}
-		if ds.usage < min || foundId == -1 {
-			min = ds.usage
-			foundId = ds.id
+		if ds.usage < min || dropSite == nil {
+			dropSite = ds
 		}
 	}
 
-	if foundId < 0 {
-		badDs := a.timeouts.popOne()
-		a.dropSites = append(a.dropSites, badDs)
-		foundId = badDs.id
+	if dropSite == nil {
+		dropSite = a.timeouts.popOne()
+		a.dropSites = append(a.dropSites, dropSite)
 	}
 
-	return foundId
+	dropSite.inUse = true
+	return dropSite.id
 }
 
 // Free deallocates a drop site, allowing it to be re-used for later allocations.

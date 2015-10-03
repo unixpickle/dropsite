@@ -72,12 +72,12 @@ func (s ProxyServer) clientToServerLoop() {
 			if s.CoordinationSocket.Send(errPacket) != nil {
 				return
 			}
-			if _, err := s.ServerConn.Write(data); err != nil {
-				return
-			}
 		} else {
 			ack := Packet{AckPacket, map[string]interface{}{"success": true}}
 			if s.CoordinationSocket.Send(ack) != nil {
+				return
+			}
+			if _, err := s.ServerConn.Write(data); err != nil {
 				return
 			}
 		}
