@@ -14,7 +14,7 @@ type ProxyClient struct {
 	ClientConn         net.Conn
 	ClientReader       latencystream.ChunkStream
 	DropSites          []DropSite
-	CoordinationSocket *CoordinationSocket
+	CoordinationSocket *JSONSocket
 	MaxErrorTimeout    time.Duration
 }
 
@@ -65,14 +65,14 @@ func (p ProxyClient) clientToServerLoop(a *allocator) {
 				continue
 			}
 
-			dataPacket := Packet{DataPacket, map[string]interface{}{"drop_site": dsIndex,
+			dataPacket := Packet{DataCoordPacket, map[string]interface{}{"drop_site": dsIndex,
 				"hash": hash}}
 			if p.CoordinationSocket.Send(dataPacket) != nil {
 				a.Failed(dsIndex)
 				return
 			}
 
-			ack, err := p.CoordinationSocket.Receive(AckPacket)
+			ack, err := p.CoordinationSocket.Receive(AckCoordPacket)
 			if err != nil {
 				a.Failed(dsIndex)
 				return
@@ -102,26 +102,26 @@ func (p ProxyClient) serverToClientLoop(a *allocator) {
 	defer p.ClientConn.Close()
 
 	for {
-		_, err := p.CoordinationSocket.Receive(AllocDropSitePacket)
+		_, err := p.CoordinationSocket.Receive(AllocDropSiteCoordPacket)
 		if err != nil {
 			return
 		}
 
 		dsIndex := a.Alloc()
-		usePacket := Packet{UseDropSitePacket, map[string]interface{}{"drop_site": dsIndex}}
+		usePacket := Packet{UseDropSiteCoordPacket, map[string]interface{}{"drop_site": dsIndex}}
 		if p.CoordinationSocket.Send(usePacket) != nil {
 			a.Failed(dsIndex)
 			return
 		}
 
-		response, err := p.CoordinationSocket.Receive2(DataPacket, UploadErrorPacket)
+		response, err := p.CoordinationSocket.Receive2(DataCoordPacket, UploadErrorCoordPacket)
 
 		if err != nil {
 			a.Failed(dsIndex)
 			return
 		}
 
-		if response.Type == UploadErrorPacket {
+		if response.Type == UploadErrorCoordPacket {
 			a.Failed(dsIndex)
 			continue
 		}
@@ -139,14 +139,14 @@ func (p ProxyClient) serverToClientLoop(a *allocator) {
 		}
 		if err != nil {
 			a.Failed(dsIndex)
-			errPacket := Packet{AckPacket, map[string]interface{}{"error": err.Error(),
+			errPacket := Packet{AckCoordPacket, map[string]interface{}{"error": err.Error(),
 				"success": false}}
 			if p.CoordinationSocket.Send(errPacket) != nil {
 				return
 			}
 		} else {
 			a.Free(dsIndex, int64(len(data)))
-			ack := Packet{AckPacket, map[string]interface{}{"success": true}}
+			ack := Packet{AckCoordPacket, map[string]interface{}{"success": true}}
 			if p.CoordinationSocket.Send(ack) != nil {
 				return
 			}
