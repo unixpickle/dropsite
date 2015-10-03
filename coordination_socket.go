@@ -153,6 +153,7 @@ func (c *CoordinationSocket) incomingLoop() {
 	}()
 
 	decoder := json.NewDecoder(c.conn)
+	decoder.UseNumber()
 	for {
 		var packet Packet
 		if err := decoder.Decode(&packet); err != nil {
@@ -161,6 +162,16 @@ func (c *CoordinationSocket) incomingLoop() {
 
 		if packet.Type < 0 || packet.Type >= PacketTypeCount {
 			return
+		}
+
+		for key, val := range packet.Fields {
+			if num, ok := val.(json.Number); ok {
+				intVal, err := num.Int64()
+				if err != nil {
+					return
+				}
+				packet.Fields[key] = int(intVal)
+			}
 		}
 
 		select {
