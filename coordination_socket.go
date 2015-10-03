@@ -105,6 +105,25 @@ func (c *CoordinationSocket) Receive(t PacketType) (*Packet, error) {
 	}
 }
 
+// Receive2 reads the next packet of either of two types.
+// It blocks until the packet is available or returns an error if the socket is dead.
+func (c *CoordinationSocket) Receive2(t1, t2 PacketType) (*Packet, error) {
+	if t1 < 0 || t1 >= PacketTypeCount || t2 < 0 || t2 >= PacketTypeCount {
+		panic("invalid packet type")
+	}
+	var res Packet
+	var ok bool
+	select {
+	case res, ok = <-c.incoming[t1]:
+	case res, ok = <-c.incoming[t2]:
+	}
+	if !ok {
+		return nil, io.EOF
+	} else {
+		return &res, nil
+	}
+}
+
 // Send sends a packet.
 // You should not modify a packet while it is being sent.
 // It blocks until the packet has sent or returns an error if the socket is dead.

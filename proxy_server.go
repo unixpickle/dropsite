@@ -41,7 +41,7 @@ func (s ProxyServer) Run() {
 // clientToServerLoop listens for data from the client proxy and forwards it to the server.
 //
 // Before this returns, it closes the server socket and the coordination socket.
-// This will immediately return if both the coordination socket and the server socket are closed.
+// This will return promptly if both the coordination socket and the server socket are closed.
 // If the coordination socket is closed, this will return once all incoming data has been written to
 // the server.
 // If the server socket is closed, this will return if the client tries to write more data to the
@@ -63,15 +63,16 @@ func (s ProxyServer) clientToServerLoop() {
 		}
 
 		data, err := s.DropSites[dsIndex].Download()
-		if err == nil {
-			if hashChunk(data) != hash {
-				err = errors.New("hashes do not match")
-			}
+		if err == nil && hashChunk(data) != hash {
+			err = errors.New("hashes do not match")
 		}
 		if err != nil {
 			errPacket := Packet{AckPacket, map[string]interface{}{"error": err.Error(),
 				"success": false}}
 			if s.CoordinationSocket.Send(errPacket) != nil {
+				return
+			}
+			if _, err := s.ServerConn.Write(data); err != nil {
 				return
 			}
 		} else {
@@ -86,7 +87,7 @@ func (s ProxyServer) clientToServerLoop() {
 // serverToClientLoop listens for data from the server and forwards it to the client proxy.
 //
 // Before this returns, it closes the server socket, s.ServerReader, and the coordination socket.
-// This will return immediately if both the server socket and the coordination socket are closed.
+// This will return promptly if both the server socket and the coordination socket are closed.
 // If the coordination socket is closed, this will return if the server tries to send data to the
 // client.
 // If the server socket is closed, this will return once all buffered data has been read from it and
