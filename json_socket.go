@@ -31,14 +31,14 @@ type JSONSocket struct {
 //
 // You should always close the returned JSONSocket, even if Send() and Receive() have already been
 // reporting errors.
-func NewJSONSocket(c net.Conn, packetTypeCount int) *JSONSocket {
+func NewJSONSocket(c net.Conn, packetTypeCount int, incomingBuffer int) *JSONSocket {
 	var res JSONSocket
 
 	res.conn = c
 
 	res.incoming = make([]chan Packet, packetTypeCount)
 	for i := 0; i < packetTypeCount; i++ {
-		res.incoming[i] = make(chan Packet, 1)
+		res.incoming[i] = make(chan Packet, incomingBuffer)
 	}
 	go res.incomingLoop()
 
@@ -154,8 +154,8 @@ func (c *JSONSocket) incomingLoop() {
 		select {
 		case c.incoming[packet.Type] <- packet:
 		default:
-			// NOTE: this means that the server sent more than one packet of the same type in
-			// sequence. This is not valid under the coordination socket protocol.
+			// NOTE: this means that the server sent more than the allowed number of packets of the
+			// same type in sequence. This is not valid under the JSON socket protocol.
 			return
 		}
 	}

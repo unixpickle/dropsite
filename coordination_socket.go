@@ -31,5 +31,5 @@ const CoordPacketTypeCount = 5
 // You should always close the returned JSONSocket, even if Send() and Receive() have already been
 // reporting errors.
 func NewCoordinationSocket(c net.Conn) *JSONSocket {
-	return NewJSONSocket(c, CoordPacketTypeCount)
+	return NewJSONSocket(c, CoordPacketTypeCount, 1)
 }

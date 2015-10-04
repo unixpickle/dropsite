@@ -16,6 +16,6 @@ const FTPPacketTypeCount = 2
 //
 // You should always close the returned JSONSocket, even if Send() and Receive() have already been
 // reporting errors.
-func NewFTPSocket(c net.Conn) *JSONSocket {
-	return NewJSONSocket(c, CoordPacketTypeCount)
+func NewFTPSocket(c net.Conn, dropSiteCount int) *JSONSocket {
+	return NewJSONSocket(c, FTPPacketTypeCount, dropSiteCount)
 }
