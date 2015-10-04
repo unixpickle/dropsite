@@ -3,18 +3,14 @@ package dropsite
 import "net"
 
 const (
-	// StartXfer packets are used to initiate a file transfer and determine who will be the sender
-	// and the receiver.
-	StartXferFTPPacket PacketType = iota
-
 	// Data packets are sent by the sender to indicate that data is available at a drop site.
-	DataFTPPacket
+	DataFTPPacket PacketType = iota
 
 	// Ack packets are sent by the client to indicate success or failure of data retrieval.
 	AckFTPPacket
 )
 
-const FTPPacketTypeCount = 3
+const FTPPacketTypeCount = 2
 
 // NewFTPSocket wraps a network connection to create a JSONSocket used for FTP coordination.
 //
