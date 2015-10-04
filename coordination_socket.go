@@ -28,8 +28,8 @@ const CoordPacketTypeCount = 5
 
 // NewCoordinationSocket wraps a network connection to create a JSONSocket used for coordination.
 //
-// You should always close the returned CoordinationSocket, even if Send() and Receive() have
-// already been reporting errors.
+// You should always close the returned JSONSocket, even if Send() and Receive() have already been
+// reporting errors.
 func NewCoordinationSocket(c net.Conn) *JSONSocket {
 	return NewJSONSocket(c, CoordPacketTypeCount)
 }

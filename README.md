@@ -16,11 +16,9 @@ There is one fine detail which is worth noting. While all data sent over the *vi
 
 # File transfers
 
-*Virtual connections* are great for most things, but they are not optimal for transferring files. When transferring a file, latency is not very important and bandwidth is key. Thus, **dropsite** provides an API specifically for optimally transferring files across drop sites.
+*Virtual connections* are great for most things, but they are not optimal for transferring files. When transferring a file, latency is not very important and bandwidth is key. To optimize for this case, **dropsite** provides an API specifically for transferring files via drop sites.
 
-Similarly to regular FTP, the file transfer system provides a mechanism for listing directories and initiating both uploads and downloads. A **file transfer session** has two components, the **client** and the **server**. The *client* connects to the *server* over a TCP socket called the **session socket**. Through this socket, the *client* can ask the server to list directories.
-
-When the **client** wishes to upload or download a file, it initiates a **file transfer**. During the *file transfer*, either the *server* or the *client* becomes the **sender**, while the other becomes the **receiver**. During a *file transfer*, the *sender* uploads chunks of data to drop sites and tells the *receiver* about these drop sites via the **session socket**.
+A **file transfer** is the process by which a file is transferred across hosts. First, the **client** establishes an **FTP socket** (a TCP socket) to the **server**. Next, the *client* tells the *server* whether it wishes to upload or download a file. This step establishes who will be the **sender** and who will be the **receiver**. For the remainder of the transfer, the *sender* uploads data chunks to drop sites and tells the *receiver* about these drop sites.
 
 # TODO
 
