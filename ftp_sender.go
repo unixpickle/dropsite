@@ -70,8 +70,8 @@ type ftpSender struct {
 
 	waitGroup sync.WaitGroup
 
-	chunks     chan chunkInfo
-	chunkDone  chan struct{}
+	chunks    chan chunkInfo
+	chunkDone chan struct{}
 
 	cancelLock sync.Mutex
 	cancelled  bool

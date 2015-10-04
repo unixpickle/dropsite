@@ -49,7 +49,7 @@ func (f *FTPReceiver) Run() error {
 		go func() {
 			defer wg.Done()
 
-			if err := f.handleDataPacket(*packet, fileAccessLock); err != nil {
+			if err := f.handleDataPacket(*packet, &fileAccessLock); err != nil {
 				firstErrLock.Lock()
 				if firstErr == nil {
 					firstErr = err
@@ -65,7 +65,7 @@ func (f *FTPReceiver) Run() error {
 	return firstErr
 }
 
-func (f *FTPReceiver) handleDataPacket(packet Packet, fileLock sync.Mutex) error {
+func (f *FTPReceiver) handleDataPacket(packet Packet, fileLock *sync.Mutex) error {
 	chunk, err := f.loadDataFromPacket(packet)
 
 	if err == ErrFTPBadData {
@@ -100,7 +100,7 @@ func (f *FTPReceiver) loadDataFromPacket(packet Packet) (chunk loadedChunk, err 
 	return
 }
 
-func (f *FTPReceiver) saveChunkAndAck(chunk loadedChunk, fileLock sync.Mutex) error {
+func (f *FTPReceiver) saveChunkAndAck(chunk loadedChunk, fileLock *sync.Mutex) error {
 	fileLock.Lock()
 	if _, err := f.Output.Seek(chunk.offset, 0); err != nil {
 		fileLock.Unlock()
