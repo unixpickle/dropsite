@@ -61,6 +61,8 @@ func (f1 *FTPSender) Run() error {
 }
 
 type ftpSender struct {
+	chunksLeft int64
+
 	*FTPSender
 
 	ackChans []chan Packet
@@ -69,7 +71,6 @@ type ftpSender struct {
 
 	chunks     chan chunkInfo
 	chunkDone  chan struct{}
-	chunksLeft int64
 
 	cancelLock sync.Mutex
 	cancelled  bool
