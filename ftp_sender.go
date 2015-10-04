@@ -193,7 +193,8 @@ func (f *ftpSender) sendChunk(c chunkInfo, dsIndex int, acks <-chan Packet) (ok 
 		return false, nil
 	}
 
-	packet := Packet{DataFTPPacket, map[string]interface{}{"drop_site": dsIndex, "hash": c.hash}}
+	packet := Packet{DataFTPPacket, map[string]interface{}{"drop_site": dsIndex, "hash": c.hash,
+		"offset": strconv.FormatInt(c.offset, 10)}}
 	if err := f.FTPSocket.Send(packet); err != nil {
 		return false, err
 	}
