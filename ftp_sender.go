@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -33,65 +34,139 @@ type FTPSender struct {
 // Run performs the file transfer.
 //
 // After this returns, the FTPSocket will be closed.
-func (f *FTPSender) Run() {
+func (f1 *FTPSender) Run() {
+	f := ftpSender{
+		FTPSender:  f1,
+		chunks:     make(chan chunkInfo),
+		chunkDone:  make(chan struct{}),
+		cancelChan: make(chan struct{}),
+	}
+
 	defer f.FTPSocket.Close()
 
-	chunks := make(chan chunkInfo)
-	doneChan := make(chan struct{})
-	ackChans := f.makeAckChans()
+	f.makeAckChans()
+	f.launchSenders()
+	f.read()
+	f.waitGroup.Wait()
+}
 
-	var wg sync.WaitGroup
-	wg.Add(len(f.DropSites))
+type ftpSender struct {
+	*FTPSender
+
+	ackChans []chan Packet
+
+	waitGroup sync.WaitGroup
+
+	chunks     chan chunkInfo
+	chunkDone  chan struct{}
+	chunksLeft int64
+
+	cancelLock sync.Mutex
+	cancelled  bool
+	cancelChan chan struct{}
+}
+
+func (f *ftpSender) makeAckChans() {
+	f.ackChans = make([]chan Packet, len(f.DropSites))
+	for i := range f.DropSites {
+		f.ackChans[i] = make(chan Packet, 1)
+	}
+
+	go func() {
+		for {
+			ack, err := f.FTPSocket.Receive(AckFTPPacket)
+			if err != nil {
+				break
+			}
+			dsIndex, ok := ack.Fields["drop_site"].(int)
+			if !ok || dsIndex < 0 || dsIndex >= len(f.ackChans) {
+				f.FTPSocket.Close()
+				break
+			}
+			f.ackChans[dsIndex] <- *ack
+		}
+		for i := range f.DropSites {
+			close(f.ackChans[i])
+		}
+	}()
+}
+
+func (f *ftpSender) launchSenders() {
+	f.waitGroup.Add(len(f.DropSites))
 	for i := range f.DropSites {
 		go func(dsIndex int) {
-			defer wg.Done()
-			acks := ackChans[dsIndex]
+			defer f.waitGroup.Done()
+			acks := f.ackChans[dsIndex]
 			for {
 				select {
-				case chunk := <-chunks:
+				case chunk := <-f.chunks:
 					if ok, shouldDie := f.sendChunk(chunk, dsIndex, acks); !ok {
 						if shouldDie {
-							close(doneChan)
+							f.cancel()
 							return
 						}
 						go func() {
 							select {
-							case chunks <- chunk:
-							case <-doneChan:
+							case f.chunks <- chunk:
+							case <-f.cancelChan:
 							}
 						}()
 						time.Sleep(f.ErrorTimeout)
+					} else {
+						select {
+						case f.chunkDone <- struct{}{}:
+						case <-f.cancelChan:
+							return
+						}
 					}
-				case <-doneChan:
+				case <-f.cancelChan:
 					return
 				}
 			}
 		}(i)
 	}
+}
+
+func (f *ftpSender) read() {
+	// NOTE: keep an "imaginary" chunk waiting until we hit EOF.
+	f.chunksLeft = 1
+
+	go func() {
+		for {
+			select {
+			case <-f.chunkDone:
+				if atomic.AddInt64(&f.chunksLeft, -1) == 0 {
+					close(f.chunks)
+					return
+				}
+			case <-f.cancelChan:
+				return
+			}
+		}
+	}()
 
 	var dataOffset int64
-ReadLoop:
 	for {
 		data, err := f.readChunk()
 		if len(data) > 0 {
 			chunk := chunkInfo{f.encryptChunk(data), hashChunk(data), dataOffset}
 			dataOffset += int64(len(data))
+			atomic.AddInt64(&f.chunksLeft, 1)
 			select {
-			case chunks <- chunk:
-			case <-doneChan:
-				break ReadLoop
+			case f.chunks <- chunk:
+			case <-f.cancelChan:
+				return
 			}
 		}
 		if err != nil {
-			close(doneChan)
-			break
+			// NOTE: this finishes the "imaginary" chunk, allowing the chunk stream to be closed
+			// once all pending chunks have been sent.
+			f.chunkDone <- struct{}{}
 		}
 	}
-
-	wg.Wait()
 }
 
-func (f *FTPSender) sendChunk(c chunkInfo, dsIndex int, acks <-chan Packet) (ok, shouldDie bool) {
+func (f *ftpSender) sendChunk(c chunkInfo, dsIndex int, acks <-chan Packet) (ok, shouldDie bool) {
 	err := f.DropSites[dsIndex].Upload(c.encrypted)
 	if err != nil {
 		return false, false
@@ -115,40 +190,23 @@ func (f *FTPSender) sendChunk(c chunkInfo, dsIndex int, acks <-chan Packet) (ok,
 	}
 }
 
-func (f *FTPSender) readChunk() ([]byte, error) {
+func (f *ftpSender) readChunk() ([]byte, error) {
 	buf := make([]byte, f.BufferSize)
 	count, err := io.ReadAtLeast(f.Input, buf, f.BufferSize)
 	return buf[:count], err
 }
 
-func (f *FTPSender) makeAckChans() []chan Packet {
-	ackChans := make([]chan Packet, len(f.DropSites))
-
-	for i := range f.DropSites {
-		ackChans[i] = make(chan Packet, 1)
+func (f *ftpSender) cancel() {
+	f.cancelLock.Lock()
+	defer f.cancelLock.Unlock()
+	if f.cancelled {
+		return
 	}
-
-	go func() {
-		for {
-			ack, err := f.FTPSocket.Receive(AckFTPPacket)
-			if err != nil {
-				break
-			}
-			dsIndex, ok := ack.Fields["drop_site"].(int)
-			if !ok || dsIndex < 0 || dsIndex >= len(ackChans) {
-				f.FTPSocket.Close()
-				break
-			}
-			ackChans[dsIndex] <- *ack
-		}
-		for i := range f.DropSites {
-			close(ackChans[i])
-		}
-	}()
-	return ackChans
+	f.cancelled = true
+	close(f.cancelChan)
 }
 
-func (f *FTPSender) encryptChunk(data []byte) []byte {
+func (f *ftpSender) encryptChunk(data []byte) []byte {
 	// NOTE: result will be IV + encrypted data.
 	result := make([]byte, aes.BlockSize+len(data))
 
