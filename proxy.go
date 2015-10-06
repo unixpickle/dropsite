@@ -70,7 +70,7 @@ func (p *proxy) clientToServerLoop() {
 		hash := hashChunk(chunk)
 		for {
 			if ok, retry := p.sendNextChunk(chunk, hash); ok {
-				continue
+				break
 			} else if !retry {
 				return
 			}
