@@ -11,8 +11,8 @@ import (
 
 // Proxy stores all the configuration info needed for a proxy client or proxy server to run.
 type Proxy struct {
-	ClientConn         net.Conn
-	ClientReader       latencystream.ChunkStream
+	Conn               net.Conn
+	Reader             latencystream.ChunkStream
 	DropSites          []DropSite
 	RemoteDropSites    []DropSite
 	CoordinationSocket *JSONSocket
@@ -55,18 +55,18 @@ func (info Proxy) Run() {
 
 // clientToServerLoop listens for data from the client and forwards it to the server proxy.
 //
-// Before this returns, it closes the client socket, s.ClientReader, and the coordination socket.
+// Before this returns, it closes the client socket, s.Reader, and the coordination socket.
 // This will return promptly if both the client socket and the coordination socket are closed.
 // If the coordination socket is closed, this will return if the client tries to send data to the
 // server.
 // If the client socket is closed, this will return once all buffered data has been read from it and
 // sent to the server proxy.
 func (p *proxy) clientToServerLoop() {
-	defer close(p.ClientReader.Close)
+	defer close(p.Reader.Close)
 	defer p.CoordinationSocket.Close()
-	defer p.ClientConn.Close()
+	defer p.Conn.Close()
 
-	for chunk := range p.ClientReader.Chunks {
+	for chunk := range p.Reader.Chunks {
 		hash := hashChunk(chunk)
 		for {
 			if ok, retry := p.sendNextChunk(chunk, hash); ok {
@@ -90,7 +90,7 @@ func (p *proxy) clientToServerLoop() {
 // client.
 func (p *proxy) serverToClientLoop() {
 	defer p.CoordinationSocket.Close()
-	defer p.ClientConn.Close()
+	defer p.Conn.Close()
 
 	for {
 		dataPacket, err := p.CoordinationSocket.Receive(DataCoordPacket)
@@ -120,7 +120,7 @@ func (p *proxy) serverToClientLoop() {
 			if p.CoordinationSocket.Send(ack) != nil {
 				return
 			}
-			if _, err := p.ClientConn.Write(data); err != nil {
+			if _, err := p.Conn.Write(data); err != nil {
 				return
 			}
 		}
