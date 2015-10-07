@@ -45,6 +45,7 @@ func (f1 *FTPSender) Run() error {
 		FTPSender:  f1,
 		chunks:     make(chan chunkInfo),
 		chunkDone:  make(chan struct{}),
+		onDone:     make(chan struct{}),
 		cancelChan: make(chan struct{}),
 	}
 
@@ -72,6 +73,7 @@ type ftpSender struct {
 
 	chunks    chan chunkInfo
 	chunkDone chan struct{}
+	onDone    chan struct{}
 
 	cancelLock sync.Mutex
 	cancelled  bool
@@ -99,6 +101,12 @@ func (f *ftpSender) makeAckChans() {
 			}
 			f.ackChans[dsIndex] <- *ack
 		}
+
+		// NOTE: if the receive failed because the file transfer completed, then f.cancel() will
+		// have no effect. If it failed because of an error during the transfer, then this will
+		// expedite shutdown in the case that every sender is sleeping due to drop site errors.
+		f.cancel(ErrFTPReceiverHangup)
+
 		for i := range f.DropSites {
 			close(f.ackChans[i])
 		}
@@ -128,7 +136,13 @@ func (f *ftpSender) launchSenders() {
 							case <-f.cancelChan:
 							}
 						}()
-						time.Sleep(f.ErrorTimeout)
+						select {
+						case <-time.After(f.ErrorTimeout):
+						case <-f.cancelChan:
+							return
+						case <-f.onDone:
+							return
+						}
 					} else {
 						select {
 						case f.chunkDone <- struct{}{}:
@@ -154,6 +168,7 @@ func (f *ftpSender) read() {
 			case <-f.chunkDone:
 				if atomic.AddInt64(&f.chunksLeft, -1) == 0 {
 					close(f.chunks)
+					close(f.onDone)
 					return
 				}
 			case <-f.cancelChan:
