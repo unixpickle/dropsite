@@ -119,6 +119,7 @@ func (f *ftpSender) launchSenders() {
 		go func(dsIndex int) {
 			defer f.waitGroup.Done()
 			acks := f.ackChans[dsIndex]
+			errorTimeout := time.Second
 			for {
 				select {
 				case chunk, ok := <-f.chunks:
@@ -137,13 +138,18 @@ func (f *ftpSender) launchSenders() {
 							}
 						}()
 						select {
-						case <-time.After(f.ErrorTimeout):
+						case <-time.After(errorTimeout):
 						case <-f.cancelChan:
 							return
 						case <-f.onDone:
 							return
 						}
+						errorTimeout *= 2
+						if errorTimeout > f.ErrorTimeout {
+							errorTimeout = f.ErrorTimeout
+						}
 					} else {
+						errorTimeout = time.Second
 						select {
 						case f.chunkDone <- struct{}{}:
 						case <-f.cancelChan:
