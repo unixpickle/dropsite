@@ -6,7 +6,11 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
+
+const KeepaliveInterval = time.Second * 30
+const KeepaliveTimeout = KeepaliveInterval * 2
 
 type PacketType int
 
@@ -19,9 +23,10 @@ type Packet struct {
 //
 // All methods may be used concurrently.
 type JSONSocket struct {
-	incoming []chan Packet
-	outgoing chan outgoingPacket
-	conn     net.Conn
+	incoming   []chan Packet
+	keepalives chan Packet
+	outgoing   chan outgoingPacket
+	conn       net.Conn
 
 	closeLock sync.RWMutex
 	closed    bool
@@ -40,10 +45,14 @@ func NewJSONSocket(c net.Conn, packetTypeCount int, incomingBuffer int) *JSONSoc
 	for i := 0; i < packetTypeCount; i++ {
 		res.incoming[i] = make(chan Packet, incomingBuffer)
 	}
+	res.keepalives = make(chan Packet, 1)
 	go res.incomingLoop()
 
 	res.outgoing = make(chan outgoingPacket)
 	go res.outgoingLoop()
+
+	go res.sendKeepalives()
+	go res.readKeepalives()
 
 	return &res
 }
@@ -127,6 +136,7 @@ func (c *JSONSocket) incomingLoop() {
 		for i := 0; i < len(c.incoming); i++ {
 			close(c.incoming[i])
 		}
+		close(c.keepalives)
 	}()
 
 	decoder := json.NewDecoder(c.conn)
@@ -135,6 +145,11 @@ func (c *JSONSocket) incomingLoop() {
 		var packet Packet
 		if err := decoder.Decode(&packet); err != nil {
 			return
+		}
+
+		if packet.Type == -1 {
+			c.keepalives <- packet
+			continue
 		}
 
 		if packet.Type < 0 || packet.Type >= PacketType(len(c.incoming)) {
@@ -170,6 +185,32 @@ func (c *JSONSocket) outgoingLoop() {
 			packet.c <- err
 		} else {
 			close(packet.c)
+		}
+	}
+}
+
+// sendKeepalives periodically sends keep-alive packets until the socket is closed.
+func (c *JSONSocket) sendKeepalives() {
+	p := Packet{-1, map[string]interface{}{}}
+	for {
+		time.Sleep(KeepaliveInterval)
+		if c.Send(p) != nil {
+			break
+		}
+	}
+}
+
+// readKeepalives kills the connection if no keep-alive packets come in for too long.
+func (c *JSONSocket) readKeepalives() {
+	for {
+		select {
+		case <-time.After(KeepaliveTimeout):
+			c.Close()
+			return
+		case _, ok := <-c.keepalives:
+			if !ok {
+				return
+			}
 		}
 	}
 }
